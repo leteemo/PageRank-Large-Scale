@@ -2,14 +2,24 @@ import re
 import sys
 import os
 import time
-from typing import Tuple
+from typing import Tuple, Iterable
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, explode, lit, sum as spark_sum, size, hash
 from pyspark.sql import functions as F
+from operator import add
+from pyspark.resultiterable import ResultIterable
 
-def parse_neighbors(line: str) -> Tuple[str, str]:
-    """Parse une ligne pour extraire une paire d'URLs."""
-    parts = re.split(r'\s+', line)
+
+
+def computeContribs(urls: Iterable[str], rank: float) -> Iterable[Tuple[str, float]]:
+    """Calculates URL contributions to the rank of other URLs."""
+    num_urls = len(urls)
+    for url in urls:
+        yield (url, rank / num_urls)
+
+def parseNeighbors(urls: str) -> Tuple[str, str]:
+    """Parses a urls pair string into urls pair."""
+    parts = re.split(r'\s+', urls)
     return parts[0], parts[2]
 
 if __name__ == "__main__":
@@ -33,63 +43,54 @@ if __name__ == "__main__":
     use_partition = sys.argv[8].lower() == 'url-partionner'
     partition_path = sys.argv[8].lower()
 
-    # Initialiser SparkSession
-    spark = SparkSession.builder.appName("PythonPageRankDF").getOrCreate()
-
-    # Charger les données en DataFrame et parser les voisins
-    lines = spark.read.text("gs://"+bucket+"/"+input_file)
-    links = lines.rdd.map(lambda row: parse_neighbors(row.value)).toDF(["src", "dst"])
-
-    # Grouper par source pour créer une liste des liens sortants
-    links = links.groupBy("src").agg(F.collect_list("dst").alias("links"))
-
-    # --- Partitionnement basé sur le hash (si activé) ---
-    if use_partition:
-        # Appliquer une fonction de hashage à 'src' pour obtenir un partitionnement
-        links = links.withColumn("partition_id", hash("src") % num_workers)
-        
-        # Repartitionner le DataFrame en fonction de la partition_id
-        links = links.repartition(num_workers, "partition_id").drop("partition_id")
-    else:
-        # Si le partitionnement est désactivé, on garde le DataFrame tel quel
-        links = links.cache()
-
-    # Initialiser les rangs avec une valeur de 1.0 pour chaque URL
-    ranks = links.select("src").withColumn("rank", lit(1.0))
-
     # Démarrer le timer avant les itérations de PageRank
     start_time = time.time()
 
-    # Effectuer les itérations de PageRank
-    for iteration in range(iteration_arg):
-        # Calcul des contributions de chaque lien
-        contribs = links.alias("l").join(ranks.alias("r"), col("l.src") == col("r.src")) \
-            .select(
-                col("l.src").alias("src"),
-                explode(col("l.links")).alias("dst"),
-                (col("r.rank") / size(col("l.links"))).alias("contrib")
-            )
 
-        # Repartitionner les contributions avant l'agrégation pour éviter les shuffles si partitionnement activé
-        if use_partition:
-            contribs = contribs.repartition(num_workers, "dst")
+    spark = SparkSession\
+        .builder\
+        .appName("PythonPageRank")\
+        .getOrCreate()
 
-        # Calcul des nouveaux rangs par agrégation des contributions
-        ranks = contribs.groupBy("dst").agg(spark_sum("contrib").alias("rank"))
-        
-        # Appliquer le facteur de décroissance de PageRank
-        ranks = ranks.withColumn("rank", col("rank") * 0.85 + 0.15)
+    # Loads in input file. It should be in format of:
+    #     URL         neighbor URL
+    #     URL         neighbor URL
+    #     URL         neighbor URL
+    #     ...
+    lines = spark.read.text("gs://"+bucket+"/"+input_file).rdd.map(lambda r: r[0])
 
-        # Renommer `dst` en `src` pour l'itération suivante
-        ranks = ranks.withColumnRenamed("dst", "src")
+    # Loads all URLs from input file and initialize their neighbors.
+    links = lines.map(lambda urls: parseNeighbors(urls)).distinct().groupByKey().cache()
+
+    # Loads all URLs with other URL(s) link to from input file and initialize ranks of them to one.
+    ranks = links.map(lambda url_neighbors: (url_neighbors[0], 1.0))
+
+    if use_partition:
+        links = links.partitionBy(None).cache()
+        ranks = ranks.partitionBy(None).cache()
+
+    # Calculates and updates URL ranks continuously using PageRank algorithm.
+    for iteration in range(int(sys.argv[2])):
+        # Calculates URL contributions to the rank of other URLs.
+        contribs = links.join(ranks).flatMap(lambda url_urls_rank: computeContribs(
+            url_urls_rank[1][0], url_urls_rank[1][1]  # type: ignore[arg-type]
+        ))
+
+        # Re-calculates URL ranks based on neighbor contributions.
+        ranks = contribs.reduceByKey(add).mapValues(lambda rank: rank * 0.85 + 0.15)
+
+
 
     # Arrêter le timer après le calcul
     end_time = time.time()
     elapsed_time = end_time - start_time
+    print("time", elapsed_time)
 
     # Sauvegarder les résultats finaux dans GCS avec coalesce(1)
     output_path = "gs://"+bucket+"/"+main_file_name+"/"+output_execution+"/"+partition_path+"/"+output
-    ranks.write.mode("overwrite").csv(output_path)
+
+    ranks_output = ranks.map(lambda x: (x[0], x[1])).toDF(["URL", "Rank"])
+    ranks_output.write.mode("overwrite").csv(output_path)
 
     # Sauvegarder le temps d'exécution dans le répertoire timer avec coalesce(1)
     timer_output_path = "gs://"+bucket+"/"+main_file_name+"/"+output_execution+"/"+partition_path+"/timer/"+timer_path
