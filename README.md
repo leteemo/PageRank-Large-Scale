@@ -11,7 +11,7 @@ chmod +x pagerank.sh \
 ##
 
 Comparatif des résultats: \
-![Graphique](https://github.com/leteemo/PageRank-Large-Scale/graphique.png "Graphique") \
+![Graphique](https://github.com/leteemo/PageRank-Large-Scale/blob/main/graphique.png "Graphique") \
 Le temps d'exécution diminue en fonction du nombre de workers avec deux, cependant il ne semble pas être efficace avec 4 workers, notamment quand il n'y a pas de partitionnement, peut être dû à un echange d'informations entre workers.
 De plus Dataframe ne semble pas plus efficace.
 
