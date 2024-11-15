@@ -6,7 +6,7 @@ Authors: Khoussein MAALOV et Hanae MELEHI
 
 git clone https://github.com/leteemo/PageRank-Large-Scale \
 chmod +x pageranker.sh \
-./pagerank.sh
+./pageranker.sh
 
 Tracé du graphique: \
 python executionComparaison.py bucket_name
