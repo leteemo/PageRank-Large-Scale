@@ -22,10 +22,6 @@ def parseNeighbors(urls: str) -> Tuple[str, str]:
     parts = re.split(r'\s+', urls)
     return parts[0], parts[2]
 
-def urlPartitioner(url: str) -> int:
-    global num_workers
-    """Custom partitioner based on the hash of the URL's first characters."""
-    return portable_hash(url) % num_workers  # % cluster nodes
 
 if __name__ == "__main__":
     if len(sys.argv) != 9:
@@ -44,57 +40,51 @@ if __name__ == "__main__":
     timer_path = sys.argv[5]
     output_execution = sys.argv[6]
     num_workers = int(sys.argv[7])
-    use_custom_partitioner = sys.argv[8].lower() == 'url-partionner'
+    use_partition = sys.argv[8].lower() == 'url-partionner'
     partition_path = sys.argv[8].lower()
 
-    # Configuration Spark avec mémoire et exécution spéculative
-    spark = SparkSession.builder \
-        .appName("OptimizedPythonPageRank") \
-        .config("spark.executor.memory", "4g") \
-        .config("spark.driver.memory", "4g") \
-        .config("spark.executor.memoryOverhead", "1g") \
-        .config("spark.speculation", "true") \
-        .getOrCreate()
-    
+
+    # Initialize the spark context.
+    spark = SparkSession.builder.appName("PythonPageRank").getOrCreate()
+
     sc = spark.sparkContext
 
-    # Chargement et parsing du fichier d'entrée
-    lines = sc.textFile("gs://"+bucket+"/"+input_file)
-    links = lines.map(lambda urls: parseNeighbors(urls)).distinct().groupByKey()
+    # Load input file as RDD and parse neighbors.
+    lines = spark.read.text("gs://"+bucket+"/"+input_file).rdd.map(lambda r: r[0])
+    links = lines.map(lambda urls: parseNeighbors(urls)).distinct().groupByKey().cache()
 
-    # Application de la partition personnalisée si nécessaire
-    num_partitions = num_workers  # Ajustement en fonction des ressources
-    if use_custom_partitioner:
-        links = links.partitionBy(num_partitions, urlPartitioner).cache()
-    else:
-        links = links.repartition(num_partitions).cache()
-
-    # Initialisation des rangs avec une valeur de 1.0
+    # Initialize ranks with a rank of 1.0 for each URL.
     ranks = links.mapValues(lambda _: 1.0)
 
-    # Démarrer le timer avant le calcul de PageRank
-    start_time = time.time()
+    if use_partition:
+        links = links.partitionBy(None).cache()
+        ranks = ranks.partitionBy(None).cache()
 
-    # Boucle d'itération pour calculer le PageRank
+    # Start timer
+    total_start_time = time.time()
+
+    # Perform PageRank iterations with precise timing.
     for iteration in range(int(iteration_arg)):
-        contribs = links.join(ranks).flatMap(
-            lambda url_urls_rank: computeContribs(url_urls_rank[1][0], url_urls_rank[1][1])
-        )
+        iteration_start_time = time.time()
 
-        # Utilisation de repartition pour équilibrer les données
-        contribs = contribs.repartition(num_partitions)
+        contribs = links.join(ranks).flatMap(lambda url_urls_rank: computeContribs(
+            url_urls_rank[1][0], url_urls_rank[1][1]
+        ))
         ranks = contribs.reduceByKey(add).mapValues(lambda rank: rank * 0.85 + 0.15)
 
-    # Arrêter le timer après la fin du calcul
-    end_time = time.time()
-    elapsed_time = end_time - start_time
+        ranks.take(1)
+
+    # End timer after all iterations
+    total_end_time = time.time()
+    total_execution_time = total_end_time - total_start_time
+    print("time:", total_execution_time)
 
     # Sauvegarde des résultats dans GCS avec coalesce pour réduire le nombre de fichiers
     output_path = "gs://"+bucket+"/"+main_file_name+"/"+output_execution+"/"+partition_path+"/"+output
-    ranks.coalesce(1).saveAsTextFile(output_path)
+    ranks.saveAsTextFile(output_path)
 
     # Sauvegarde du temps d'exécution dans GCS avec coalesce également
     timer_output_path = "gs://"+bucket+"/"+main_file_name+"/"+output_execution+"/"+partition_path+"/timer/"+timer_path
-    sc.parallelize([elapsed_time]).coalesce(1).saveAsTextFile(timer_output_path)
+    sc.parallelize([total_execution_time]).saveAsTextFile(timer_output_path)
 
     spark.stop()
