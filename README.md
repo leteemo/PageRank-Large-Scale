@@ -5,7 +5,7 @@ Authors: Khoussein MAALOV et Hanae MELEHI
 # Installation
 
 git clone https://github.com/leteemo/PageRank-Large-Scale \
-chmod +x pagerank.sh \
+chmod +x pageranker.sh \
 ./pagerank.sh
 
 Tracé du graphique: \
