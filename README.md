@@ -8,6 +8,9 @@ git clone https://github.com/leteemo/PageRank-Large-Scale \
 chmod +x pagerank.sh \
 ./pagerank.sh
 
+Tracé du graphique:
+python executionComparaison.py <bucket name>
+
 ##
 
 Comparatif des résultats: \
