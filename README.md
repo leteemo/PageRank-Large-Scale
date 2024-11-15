@@ -41,7 +41,7 @@ Initialisation des rangs : Chaque URL est initialisée avec un rang de 1.0.
         Pour chaque itération, chaque URL distribue son rang actuel à ses voisins, selon une fonction appelée computeContribs. Cette fonction prend en compte le nombre de voisins de chaque URL pour calculer la part de rang qui revient à chaque voisin.
 - Mise à jour des rangs :
         Les contributions reçues par chaque URL sont agrégées, puis chaque URL met à jour son rang en utilisant le facteur de damping (0.85) et le facteur de téléportation (0.15).
-    Sauvegarde des résultats : Après la dernière itération, les résultats sont sauvegardés dans un fichier texte sur GCS, qui contient les rangs calculés pour chaque URL.
+    Sauvegarde des résultats : Après la dernière itération, les résultats sont sauvegardés dans un fichier texte sur GCS, qui contient les rangs calculés pour chaque URL. take(1) est appliqué afin de forcer spark à faire les calcul.
 
 L'approche RDD est adaptée aux opérations de transformation et d'agrégation, comme celles utilisées dans l'algorithme PageRank. Cependant, elle peut manquer d'optimisations automatiques disponibles avec les DataFrames.
 
