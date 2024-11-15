@@ -9,7 +9,7 @@ chmod +x pagerank.sh \
 ./pagerank.sh
 
 Tracé du graphique: \
-python executionComparaison.py <bucket name>
+python executionComparaison.py bucket_name
 
 ##
 
