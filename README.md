@@ -1,5 +1,19 @@
 # Page Rank avec Google Cloud Computing
 
+Authors: Khoussein MAALOV et Hanahe MELEHI
+
+# Installation
+
+git clone https://github.com/leteemo/PageRank-Large-Scale \
+chmod +x pagerank.sh \
+./pagerank.sh
+
+##
+
+Comparatif des résultats: \
+![Logo GitHub](https://github.com/leteemo/PageRank-Large-Scale/graphique.png "Graphique") \
+Le temps d'exécution diminue en fonction du nombre de workers avec deux, cependant il ne semble pas être efficace avec 4 workers, notamment quand il n'y a pas de partitionnement, peut être dû à un echange d'informations entre workers.
+
 ## Script
 
 Le script bash exécute les étapes suivantes :
@@ -7,7 +21,7 @@ Le script bash exécute les étapes suivantes :
 - Téléchargement du fichier d'entrée : Le fichier contenant les liens entre les pages (small_page_links.nt) est téléchargé depuis un dépôt GitHub.
 - Création du bucket Google Cloud Storage (GCS) : Un bucket GCS est créé pour stocker les données, si celui-ci n'existe pas encore.
 - Configuration du projet Google Cloud : Le script configure le projet Google Cloud et active les API nécessaires (Dataproc et Storage).
-- Réservation et configuration du cluster Dataproc : Un cluster Dataproc est créé avec un nombre de nœuds défini, permettant de distribuer les calculs.
+- Réservation et configuration du cluster Dataproc : Un cluster Dataproc est créé avec un nombre de nœuds défini, permettant de distribuer les calculs. Plusieurs boucles permettent de spécifier le 
 - Exécution du job PySpark : Le script soumet un job PySpark au cluster pour exécuter l'algorithme de PageRank. Ce job calcule les rangs des pages en utilisant une approche RDD ou DataFrame.
 - Téléchargement des résultats : Les résultats finaux (les rangs calculés des pages) sont stockés dans le bucket GCS et peuvent être listés ou téléchargés.
 - Suppression du cluster : Une fois le traitement terminé, le cluster est supprimé pour libérer les ressources et éviter les coûts supplémentaires.
