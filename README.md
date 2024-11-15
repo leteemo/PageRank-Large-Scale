@@ -1,6 +1,6 @@
 # Page Rank avec Google Cloud Computing
 
-Authors: Khoussein MAALOV et Hanahe MELEHI
+Authors: Khoussein MAALOV et Hanae MELEHI
 
 # Installation
 
